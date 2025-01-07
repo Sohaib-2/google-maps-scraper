@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Google Maps Scraper</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .export-options {
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+        }
+        .status-container {
+            margin-top: 20px;
+            padding: 15px;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .progress-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background-color: #edf2f7;
+            border-radius: 4px;
+            overflow: hidden;
+            margin: 10px 0;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #4299e1;
+            transition: width 0.3s ease;
+        }
+        .business-card {
+            border: 1px solid #e2e8f0;
+            margin-bottom: 15px;
+            padding: 15px;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .business-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+        .business-name {
+            font-size: 1.2em;
+            font-weight: bold;
+            color: #2d3748;
+            margin: 0;
+        }
+        .business-rating {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            color: #4a5568;
+        }
+        .business-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        .amenities-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .amenity-badge {
+            background: #ebf4ff;
+            color: #4299e1;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        .status-open {
+            background: #c6f6d5;
+            color: #2f855a;
+        }
+        .status-closed {
+            background: #fed7d7;
+            color: #c53030;
+        }
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: #4299e1;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #3182ce;
+        }
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+        .btn:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+        .time-estimate {
+            color: #718096;
+            font-size: 0.9em;
+        }
+        .current-task {
+            color: #4a5568;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Google Maps Scraper</h1>
+        
+        <div class="form-group">
+            <label for="searchTerm">Search Term</label>
+            <input type="text" id="searchTerm" placeholder="Enter business type (e.g., 'restaurants')">
+        </div>
+        
+        <div class="form-group">
+            <label for="location">Location</label>
+            <input type="text" id="location" placeholder="Enter city/country">
+        </div>
+        
+        <div class="form-group">
+            <label for="resultCount">Number of Results (5-120)</label>
+            <input type="number" id="resultCount" min="5" max="120" value="10">
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="headless" checked>
+                Run in headless mode
+            </label>
+        </div>
+
+        <div class="export-options">
+            <select id="exportFormat" class="export-format-select">
+                <option value="csv">CSV</option>
+                <option value="json">JSON</option>
+                <option value="excel">Excel</option>
+            </select>
+            <button id="exportBtn" class="btn btn-secondary" disabled>Export Results</button>
+        </div>
+        
+        <button id="startBtn" class="btn btn-primary">Start Scraping</button>
+        <button id="stopBtn" class="btn btn-secondary" disabled>Stop</button>
+        
+        <div class="status-container">
+            <div class="progress-info">
+                <div id="statusText">Status: Ready</div>
+                <div class="time-estimate" id="timeEstimate"></div>
+            </div>
+            <div class="current-task" id="currentTask"></div>
+            <div class="progress-bar">
+                <div class="progress-bar-fill" style="width: 0%"></div>
+            </div>
+        </div>
+        
+        <div id="results">
+            <!-- Results will be dynamically inserted here -->
+        </div>
+    </div>
+
+    <script>
+        const { ipcRenderer } = require('electron');
+        
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const exportBtn = document.getElementById('exportBtn');
+        const statusText = document.getElementById('statusText');
+        const currentTask = document.getElementById('currentTask');
+        const timeEstimate = document.getElementById('timeEstimate');
+        const results = document.getElementById('results');
+        const progressBar = document.querySelector('.progress-bar-fill');
+
+        function createBusinessCard(data) {
+            const rating = data.basicInfo.rating ? `${data.basicInfo.rating}/5` : 'No rating';
+            const reviews = data.basicInfo.totalReviews ? `(${data.basicInfo.totalReviews} reviews)` : '';
+            
+            return `
+                <div class="business-card">
+                    <div class="business-header">
+                        <h3 class="business-name">${data.basicInfo.name}</h3>
+                        <div class="business-rating">
+                            ${rating} ${reviews}
+                            <span class="status-badge ${data.hours?.currentStatus?.includes('Open') ? 'status-open' : 'status-closed'}">
+                                ${data.hours?.currentStatus || 'Status unknown'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="business-details">
+                        <div>
+                            <div>📍 ${data.contact.address || 'No address'}</div>
+                            <div>📞 ${data.contact.phone || 'No phone'}</div>
+                            ${data.contact.website ? `<div>🌐 <a href="${data.contact.website}" target="_blank">Website</a></div>` : ''}
+                        </div>
+                    </div>
+                    <div class="amenities-list">
+                        ${(data.amenities || []).slice(0, 5).map(amenity => 
+                            `<span class="amenity-badge">${amenity}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        let startTime;
+        let processedCount = 0;
+
+        function updateTimeEstimate(current, total) {
+            if (!startTime) return;
+            
+            const elapsed = (Date.now() - startTime) / 1000;
+            const avgTimePerItem = elapsed / current;
+            const remaining = (total - current) * avgTimePerItem;
+            
+            timeEstimate.textContent = `Estimated time remaining: ${Math.round(remaining)}s`;
+        }
+
+        startBtn.addEventListener('click', () => {
+            const data = {
+                searchTerm: document.getElementById('searchTerm').value,
+                location: document.getElementById('location').value,
+                resultCount: parseInt(document.getElementById('resultCount').value),
+                isHeadless: document.getElementById('headless').checked
+            };
+
+            results.innerHTML = '';
+            progressBar.style.width = '0%';
+            exportBtn.disabled = true;
+            startBtn.disabled = true;
+            stopBtn.disabled = false;
+            startTime = Date.now();
+            processedCount = 0;
+            
+            ipcRenderer.send('start-scraping', data);
+        });
+
+        stopBtn.addEventListener('click', () => {
+            ipcRenderer.send('stop-scraping');
+        });
+
+        exportBtn.addEventListener('click', () => {
+            const format = document.getElementById('exportFormat').value;
+            ipcRenderer.send('export-results', { format });
+        });
+
+        ipcRenderer.on('scraping-progress', (event, data) => {
+            statusText.textContent = `Status: ${data.message}`;
+            if (data.current && data.total) {
+                const percent = Math.round((data.current / data.total) * 100);
+                progressBar.style.width = `${percent}%`;
+                processedCount = data.current;
+                updateTimeEstimate(data.current, data.total);
+            }
+            if (data.currentTask) {
+                currentTask.textContent = data.currentTask;
+            }
+        });
+
+        ipcRenderer.on('scraping-results', (event, data) => {
+            results.innerHTML = data.map(createBusinessCard).join('');
+            exportBtn.disabled = false;
+        });
+
+        ipcRenderer.on('scraping-error', (event, data) => {
+            statusText.textContent = `Error: ${data.message}`;
+            currentTask.textContent = '';
+            timeEstimate.textContent = '';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+
+        ipcRenderer.on('scraping-stopped', (event, data) => {
+            statusText.textContent = `Status: ${data.message}`;
+            currentTask.textContent = '';
+            timeEstimate.textContent = '';
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+        });
+
+        ipcRenderer.on('scraping-complete', (event, data) => {
+            statusText.textContent = 'Status: Scraping completed successfully';
+            currentTask.textContent = '';
+            timeEstimate.textContent = `Total time: ${Math.round((Date.now() - startTime) / 1000)}s`;
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            if (data.results) {
+                results.innerHTML = data.results.map(createBusinessCard).join('');
+                exportBtn.disabled = false;
+            }
+        });
+
+        ipcRenderer.on('export-complete', (event, data) => {
+            statusText.textContent = `Status: Export completed - ${data.message}`;
+        });
+    </script>
+</body>
+</html>
