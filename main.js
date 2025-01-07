@@ -8,7 +8,7 @@ let mainWindow;
 let scraper = null;
 let scrapedResults = [];
 
-function createWindow() {
+async function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1200,
         height: 800,
@@ -26,9 +26,13 @@ function createWindow() {
     }
 }
 
+// Initialize app
 app.whenReady().then(createWindow);
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
+    if (scraper) {
+        await scraper.cleanup();
+    }
     if (process.platform !== 'darwin') {
         app.quit();
     }
@@ -126,6 +130,7 @@ ipcMain.on('start-scraping', async (event, data) => {
     try {
         const { searchTerm, location, resultCount, isHeadless } = data;
         
+        // Create new scraper instance
         scraper = new MapsScraper({
             onProgress: (progress) => {
                 event.reply('scraping-progress', progress);
@@ -136,7 +141,17 @@ ipcMain.on('start-scraping', async (event, data) => {
             }
         });
 
-        await scraper.initialize(isHeadless);
+        // Initialize browser with Chrome check/download
+        try {
+            event.reply('scraping-progress', {
+                status: 'info',
+                message: 'Initializing browser and checking Chrome installation...'
+            });
+
+            await scraper.initialize(isHeadless);
+        } catch (error) {
+            throw new Error(`Browser initialization failed: ${error.message}`);
+        }
         
         event.reply('scraping-progress', {
             status: 'started',

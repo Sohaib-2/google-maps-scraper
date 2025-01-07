@@ -1,4 +1,8 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
+const chromeFinder = require('chrome-finder');
+const downloadChromium = require('download-chromium');
+const path = require('path');
+const fs = require('fs').promises;
 
 class MapsScraper {
     constructor(options = {}) {
@@ -9,14 +13,70 @@ class MapsScraper {
         this.resultCallback = options.onResult || (() => {});
     }
 
-    async initialize(isHeadless = true) {
-        this.browser = await puppeteer.launch({
-            headless: isHeadless,
-            defaultViewport: { width: 1366, height: 768 }
-        });
-        this.page = await this.browser.newPage();
-        await this.page.setDefaultNavigationTimeout(30000);
+    async findOrDownloadChrome() {
+        try {
+            // First try to find installed Chrome
+            const chromePath = chromeFinder();
+            if (chromePath) {
+                return chromePath;
+            }
+        } catch (error) {
+            console.log('No Chrome installation found, downloading Chromium...');
+        }
+
+        // If no Chrome found, download Chromium
+        try {
+            const downloadPath = path.join(process.cwd(), 'chrome');
+            
+            // Check if Chromium is already downloaded
+            try {
+                await fs.access(downloadPath);
+                return downloadPath;
+            } catch {
+                // Download if not exists
+                this.progressCallback({ 
+                    status: 'info', 
+                    message: 'Downloading Chrome (required for first run)...' 
+                });
+                
+                const chromePath = await downloadChromium({
+                    revision: '1000044',
+                    installPath: downloadPath,
+                    progressCallback: (progress) => {
+                        this.progressCallback({
+                            status: 'progress',
+                            message: `Downloading Chrome: ${Math.round(progress * 100)}%`,
+                            current: progress * 100,
+                            total: 100
+                        });
+                    }
+                });
+                
+                return chromePath;
+            }
+        } catch (error) {
+            throw new Error(`Failed to download Chrome: ${error.message}`);
+        }
     }
+
+    async initialize(isHeadless = true) {
+        try {
+            const chromePath = await this.findOrDownloadChrome();
+            
+            this.browser = await puppeteer.launch({
+                headless: isHeadless,
+                executablePath: chromePath,
+                defaultViewport: { width: 1366, height: 768 },
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+            
+            this.page = await this.browser.newPage();
+            await this.page.setDefaultNavigationTimeout(30000);
+        } catch (error) {
+            throw new Error(`Failed to initialize browser: ${error.message}`);
+        }
+    }
+
 
     async wait(ms) {
         await new Promise(resolve => setTimeout(resolve, ms));
